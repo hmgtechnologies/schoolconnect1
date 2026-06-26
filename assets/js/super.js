@@ -73,7 +73,42 @@ const Super = {
       { m: ['deploy', 'host', 'supabase', 'go live', 'setup'], r: 'See **DEPLOYMENT-GUIDE.md** in your download: create a free Supabase project, run the SQL files in order, paste your keys into `assets/js/config.js`, and host the folder on GitHub Pages / Netlify / Vercel / Cloudflare.' },
       { m: ['contact', 'support', 'help me', 'human', 'whatsapp'], r: 'Need a human? Use the **WhatsApp** / email contact in the footer, or reach HMG Concepts. I can answer questions about any module here too.' }
     ],
-    QUICK: ['How do I create a CBT exam?', 'Set up report cards', 'Add a part-time teacher', 'Record fees', 'Enable 2FA'],
+    QUICK: ['What is this page?', 'How do I create a CBT exam?', 'Set up report cards', 'Add a part-time teacher', 'Record fees'],
+    /* Per-page explanations (issue 3): the assistant explains the current page,
+       and the topbar "ℹ️ About this page" button opens this. */
+    PAGE_HELP: {
+      dashboard: 'The **Dashboard** is your home overview — live counts of students, staff, fees and notices, latest announcements, active polls and quick analytics. Use the sidebar to open any module.',
+      students: 'The **Students** page is your student register. Click **+ Add new** to register a student (admission numbers are **auto-generated**). You can edit, delete and export to CSV. Other modules pull student names from here via dropdowns.',
+      staff: 'The **Staff** page lists teachers and non-teaching staff. Add staff, set roles and departments, and mark part-time. Member IDs are auto-generated when an account is approved.',
+      classes: 'The **Classes** page defines the classes/arms your school runs. These appear as dropdown options across results, attendance, timetable and more.',
+      subjects: 'The **Subjects** page lists subjects offered. They appear as dropdowns in results, scheme of work, assignments and the timetable.',
+      attendance: 'The **Attendance** page records daily/class attendance. Pick the student from the dropdown (class auto-fills), choose present/absent/late/excused and the time. Parents see only their own children.',
+      results: 'The **Results** page records CA and exam scores per student per subject. Pick the student, subject, class, term and session from dropdowns. Totals and grades feed the report card and broadsheet.',
+      'report-cards': 'The **Report Cards** page builds termly report cards: define assessment columns (CA1/CA2/Exam…) with max marks, enter scores, then generate each student\'s report card, the class broadsheet and a teacher scoresheet.',
+      timetable: 'The **Timetable** page shows class timetables. Use **Auto-Timetable** to generate a conflict-free timetable (with break periods and part-time-teacher days).',
+      'timetable-generator': 'The **Auto-Timetable** page first lets you set the daily periods, their times and breaks, then generates a conflict-free timetable. Part-time teachers are only scheduled on the days they attend.',
+      sow: 'The **Scheme of Work** page lets each teacher enter their term plan (week → topic) at the start of term, then tick each topic as **taught** weekly so admin can monitor covered vs uncovered topics.',
+      cbt: 'The **CBT** page lets teachers create online exams (17 question types), share a code/link, and view results. Exams can be mapped to a report-card column so scores flow in automatically.',
+      fees: 'The **Fees** page records payments per student (pick the student from the dropdown). View balances, print receipts; use Online Fee Payments for gateway links.',
+      announcements: 'The **Announcements** page posts notices. Choose the **audience** from the dropdown (all/students/parents/staff/a class) and a priority.',
+      birthdays: 'The **Birthdays** page celebrates students/staff. Student birthdays are pulled automatically from the students\' dates of birth.',
+      idcards: 'The **ID Cards** page generates branded student/staff cards with a QR code and the student\'s photo (from the student record / Google Drive). Print one or all.',
+      certificates: 'The **Certificates** page designs branded certificates — pick colours, fonts, layout and append a signature — each with a verification code.',
+      admissions: 'The **Admissions** page manages applications. Generate an **application link** to send to prospective parents; when an application is accepted, **extract** it to create the student record automatically.',
+      approvals: 'The **Approvals** page is where admins approve prospective students, parents and staff (and admissions applications). Approving generates their member ID.',
+      analytics: 'The **Analytics** page shows comprehensive, live KPIs and charts across every module to support decisions.',
+      checkin: 'The **QR Check-in** page lets students check in by scanning their ID-card QR with the device camera, or by typing their admission number.',
+      voting: 'The **Voting** page runs elections and polls with live, optionally anonymous results.',
+      settings: 'The **Settings** page controls 2-factor authentication, language and accessibility (font size, contrast).'
+    },
+    currentPageId() { return (location.pathname.split('/').pop() || 'dashboard').replace('.html', '') || 'dashboard'; },
+    explainPage() {
+      const id = this.currentPageId();
+      const msg = this.PAGE_HELP[id] || ('This is the **' + id.replace(/-/g, ' ') + '** page. Click **+ Add new** to create a record; you can edit, delete and export. Ask me anything specific!');
+      Super.chatbot.toggle(true);
+      this.history.push({ from: 'bot', msg: msg, chips: ['How do I add a record?', 'Where do dropdown options come from?', 'Back to topics'] });
+      this.render();
+    },
     mount() {
       if (typeof document === 'undefined' || document.getElementById('sc-chatbot')) return;
       const wrap = document.createElement('div');
@@ -115,6 +150,14 @@ const Super = {
        Returns { r: replyText, p: pageLink, chips: [followups] }. */
     answer(msg) {
       const l = ' ' + msg.toLowerCase().replace(/[^a-z0-9 ]/g, ' ') + ' ';
+      // Per-page contextual help (issue 3)
+      if (/(what is|about|explain|help with|how does).*(this|the) (page|section|screen)|^\s*this page\s*$|^\s*about\s*$/.test(l) || /\bback to topics\b/.test(l)) {
+        if (/back to topics/.test(l)) return { r: 'Sure — pick a topic:', chips: this.QUICK };
+        const id = this.currentPageId();
+        return { r: this.PAGE_HELP[id] || 'This page lets you manage its records — click **+ Add new**, then edit/delete/export. Ask me anything specific.', chips: ['How do I add a record?', 'Back to topics'] };
+      }
+      if (/where.*(dropdown|options|come from)|how.*dropdown/.test(l)) return { r: 'Dropdowns are populated from your own data: students from the **Students** page, classes from **Classes**, subjects from **Subjects**, and lists like *audience* from **Settings → lookups**. Register them once and pick them everywhere — no retyping.', chips: this.QUICK };
+      if (/how.*(add|create).*(record|entry|new)/.test(l)) return { r: 'Click **+ Add new** on the page. A form opens — fields with dropdowns let you pick existing students/classes/subjects/terms instead of typing. Fill it and click **Save**.', chips: this.QUICK };
       let best = null, bestScore = 0;
       for (const e of this.KB) {
         let score = 0;
@@ -237,8 +280,23 @@ const Super = {
      ================================================================== */
   idcard: {
     qrUrl(data, size) { size = size || 120; return 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data); },
+    /* Convert a Google-Drive share link to a direct-image URL so student
+       photos stored on Drive actually render on the ID card (issue 11). */
+    driveDirect(url) {
+      if (!url) return '';
+      let m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/) || url.match(/[?&]id=([^&]+)/);
+      if (m) return 'https://drive.google.com/uc?export=view&id=' + m[1];
+      m = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+      if (m) return 'https://drive.google.com/uc?export=view&id=' + m[1];
+      return url;
+    },
     html(person) {
       const s = Super.school || {};
+      const photo = this.driveDirect(person.photo_url || '');
+      const initial = (person.full_name || person.name || 'S').charAt(0).toUpperCase();
+      const photoImg = photo
+        ? `<img src="${Super.esc(photo)}" referrerpolicy="no-referrer" style="width:70px;height:70px;border-radius:10px;object-fit:cover;background:#f1f5f9" alt="photo" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:70px;height:70px;border-radius:10px;background:var(--primary,#4f46e5);color:#fff;align-items:center;justify-content:center;font-weight:900;font-size:1.6rem">${initial}</div>`
+        : `<div style="width:70px;height:70px;border-radius:10px;background:var(--primary,#4f46e5);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.6rem">${initial}</div>`;
       const qr = this.qrUrl(JSON.stringify({ id: person.id || person.admission_no || '', name: person.full_name || person.name || '', type: person.type || 'student' }));
       return `<div class="sc-idcard" style="width:340px;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;font-family:sans-serif">
         <div style="background:var(--primary,#4f46e5);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px">
@@ -246,7 +304,7 @@ const Super = {
           <div><strong style="font-size:.95rem">${Super.esc(s.name || 'School')}</strong><div style="font-size:.7rem;opacity:.9">${Super.esc(s.motto || '')}</div></div>
         </div>
         <div style="display:flex;gap:12px;padding:14px;align-items:center">
-          <img src="${person.photo_url || this.qrUrl(person.full_name || 'student', 70)}" style="width:70px;height:70px;border-radius:10px;object-fit:cover;background:#f1f5f9" alt="">
+          ${photoImg}
           <div style="flex:1;font-size:.85rem">
             <div style="font-weight:700">${Super.esc(person.full_name || person.name || '')}</div>
             <div style="color:#64748b">${Super.esc(person.class || person.role || '')}</div>

@@ -31,6 +31,7 @@ const Generator = {
     const ENTERPRISE_JS = await fetchFile('assets/js/enterprise.js');
     const CRUD_JS = await fetchFile('assets/js/crud.js');
     const ENTERPRISE_SCHEMA_SQL = await fetchFile('database/enterprise-schema.sql');
+    const ENHANCEMENTS_SCHEMA_SQL = await fetchFile('database/enhancements-schema.sql');
     const PREVIEW_JS = await fetchFile('assets/js/preview.js');
     const SAMPLE_BANK_CSV = await fetchFile('database/further_maths_sample.csv');
     const HEADERS_FILE = await fetchFile('_headers');
@@ -154,6 +155,7 @@ const Generator = {
     zip.file('database/cbt-schema.sql',        CBT_SCHEMA_SQL        || '');
     zip.file('database/reportcard-schema.sql', REPORTCARD_SCHEMA_SQL || '');
     zip.file('database/enterprise-schema.sql', ENTERPRISE_SCHEMA_SQL || '');
+    zip.file('database/enhancements-schema.sql', ENHANCEMENTS_SCHEMA_SQL || '');
     zip.file('database/sample-questions.csv',  Generator.sampleCSV());
     if (SAMPLE_BANK_CSV) zip.file('database/sample-question-bank.csv', SAMPLE_BANK_CSV);
     /* Re-added (cumulative): deployment hardening + offline + msapplication tile */
@@ -181,6 +183,8 @@ const Generator = {
     zip.file('analytics.html',     Generator.pageAnalytics(cfg));    // platform analytics
     zip.file('admin-data.html',    Generator.pageAdminData(cfg));    // read/delete/backup/restore
     zip.file('approvals.html',     Generator.pageApprovals(cfg));    // approve students/parents/staff/admissions
+    zip.file('admissions.html',    Generator.pageAdmissions(cfg));   // links + review + extract
+    zip.file('apply.html',         Generator.pageApply(cfg));        // PUBLIC application form (no auth)
     /* ✨ v3 super-feature pages */
     zip.file('idcards.html',       Generator.pageIdCards(cfg));      // QR ID-card generator
     zip.file('certificates.html',  Generator.pageCertificates(cfg)); // verifiable certificates
@@ -202,8 +206,8 @@ const Generator = {
       // ✨ FINAL v2 enterprise modules
       'timetable-generator','checkin','diary','surveys','menu','settings','approvals'];
     // These have dedicated, full-featured pages above — don't overwrite with the generic template.
-    const DEDICATED = ['cbt','results','analytics','report-cards','admin-data','idcards','certificates','flyer',
-      'timetable-generator','checkin','diary','surveys','menu','settings','approvals'];
+    const DEDICATED = ['cbt','analytics','report-cards','admin-data','idcards','certificates','flyer',
+      'timetable-generator','checkin','diary','surveys','menu','settings','approvals','admissions'];
     pageIds.forEach(id => {
       if (DEDICATED.includes(id)) return;
       if (cfg.modules.includes(id) || ['dashboard','voting','notifications'].includes(id)) {
@@ -1334,16 +1338,23 @@ const Exam = {
   codeEntry(prefill){
     this.root().innerHTML = '<div class="card"><h3>Enter exam details</h3>'+
       '<div class="form-group"><label>Exam code</label><input class="form-input" id="e-code" value="'+(prefill||'')+'" placeholder="ABC123"></div>'+
-      '<div class="form-group"><label>Your full name</label><input class="form-input" id="e-name" placeholder="Surname First-name"></div>'+
+      '<div class="form-group"><label>Your full name <span style="color:var(--gray-500);font-weight:400">(optional for anonymous exams)</span></label><input class="form-input" id="e-name" placeholder="Surname First-name"></div>'+
       '<div class="form-group"><label>Your student ID / admission no (if registered)</label><input class="form-input" id="e-id" placeholder="optional for open exams"></div>'+
       '<div class="form-group"><label>Class</label><input class="form-input" id="e-class" placeholder="e.g. JSS1"></div>'+
-      '<button class="btn btn-primary" onclick="Exam.load()">Start exam</button></div>';
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+        '<button class="btn btn-primary" onclick="Exam.load(false)">Start exam</button>'+
+        '<button class="btn btn-outline" onclick="Exam.load(true)">👤 Continue as Guest (anonymous)</button>'+
+      '</div>'+
+      '<p style="color:var(--gray-500);font-size:.82rem;margin-top:10px">No account needed for open exams. Guests can take the exam anonymously.</p></div>';
   },
-  async load(){
+  async load(anon){
     if(!sb){ toast('Database not configured.','warning'); return; }
     const code=document.getElementById('e-code').value.toUpperCase().trim();
-    this.student={ name:document.getElementById('e-name').value.trim(), id_ref:document.getElementById('e-id').value.trim(), class:document.getElementById('e-class').value.trim() };
-    if(!code||!this.student.name){ toast('Enter the code and your name.','warning'); return; }
+    let nm=document.getElementById('e-name').value.trim();
+    if(anon && !nm) nm='Anonymous-'+Math.random().toString(36).slice(2,7).toUpperCase();
+    this.student={ name:nm, id_ref:document.getElementById('e-id').value.trim(), class:document.getElementById('e-class').value.trim(), anonymous:!!anon };
+    if(!code){ toast('Enter the exam code.','warning'); return; }
+    if(!this.student.name){ this.student.name='Anonymous-'+Math.random().toString(36).slice(2,7).toUpperCase(); }
     const { data, error } = await sb.rpc('cbt_get_public_exam', { p_code: code });
     if(error || !data){ toast('Exam not found or not open.','danger'); return; }
     if(data.wait){ this.root().innerHTML='<div class="card"><h3>⏳ Please wait</h3><p>This exam opens at '+new Date(data.start_at).toLocaleString()+'.</p></div>'; return; }
@@ -1436,7 +1447,17 @@ Exam.start();
         <button class="btn btn-primary" onclick="RC.load()">Load / Build</button>
       </div>
       <div id="rc-cols" data-staff-only></div>
-      <div id="rc-grid"></div>`;
+      <div id="rc-grid"></div>
+      <div class="card" style="margin-top:16px" data-staff-only>
+        <h3>📄 Step 4 · Generate outputs</h3>
+        <p style="color:var(--gray-600);font-size:.9rem">Generate printable termly outputs from the recorded scores (all subjects).</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <input class="form-input" id="rc-student" placeholder="Student name for report card" style="max-width:240px">
+          <button class="btn btn-primary" onclick="RC.reportCard()">🧾 Student Report Card</button>
+          <button class="btn btn-outline" onclick="RC.broadsheet()">📊 Class Broadsheet</button>
+          <button class="btn btn-outline" onclick="RC.scoresheet()">📋 Teacher Scoresheet</button>
+        </div>
+      </div>`;
     return T.shell(cfg, 'Report Cards', body, { requireRole: 'staff' })
       .replace('</body></html>', Generator._reportCardScript(cfg) + '</body></html>');
   },
@@ -1506,6 +1527,32 @@ const RC = {
     document.querySelectorAll('#rc-grid tbody tr').forEach(tr=>{ const cells=[...tr.children].map(td=>{ const inp=td.querySelector('input'); return inp?inp.value:td.textContent.trim(); }); rows.push(cells); });
     const csv=rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\\n');
     const blob=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='report-'+this.ctx.class+'-'+this.ctx.subject+'.csv'; a.click();
+  },
+  /* ---- Issue 6: printable termly outputs (report card / broadsheet / scoresheet) ---- */
+  _print(title, html){ const w=window.open('','_blank'); const sc=(window.SCHOOL||{}); w.document.write('<html><head><title>'+title+'</title><style>body{font-family:system-ui,sans-serif;padding:24px;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #cbd5e1;padding:6px 8px;font-size:13px;text-align:left}th{background:#f1f5f9}h1,h2{margin:4px 0}.hd{text-align:center;border-bottom:3px solid '+(sc.themePrimary||'#4f46e5')+';padding-bottom:10px;margin-bottom:14px}</style></head><body><div class="hd"><h1>'+esc(sc.name||"School")+'</h1><p>'+esc(sc.motto||'')+'</p><h2>'+title+'</h2></div>'+html+'<p style="margin-top:30px;font-size:11px;color:#94a3b8;text-align:center">Powered by HMG Concepts</p><scr'+'ipt>window.onload=()=>window.print()<\/scr'+'ipt></body></html>'); w.document.close(); },
+  async reportCard(){ if(!sb){toast('Database not configured','warning');return;} const name=document.getElementById('rc-student').value.trim(); if(!name){toast('Enter a student name','warning');return;}
+    const term=this.ctx.term||document.getElementById('rc-term').value, ses=this.ctx.session||document.getElementById('rc-session').value, cls=this.ctx.class||document.getElementById('rc-class').value;
+    const {data}=await sb.from('report_subject_totals').select('*').eq('student_name',name).eq('term',term).eq('session',ses);
+    let rows=(data||[]); let html='<p><strong>Student:</strong> '+esc(name)+' &nbsp; <strong>Class:</strong> '+esc(cls)+' &nbsp; <strong>Term:</strong> '+esc(term)+' &nbsp; <strong>Session:</strong> '+esc(ses)+'</p>';
+    if(!rows.length){ html+='<p>No recorded scores yet for this student/term.</p>'; }
+    else { let go=0,ob=0; html+='<table><thead><tr><th>Subject</th><th>Obtained</th><th>Obtainable</th><th>%</th><th>Grade</th></tr></thead><tbody>'+rows.map(r=>{go+=Number(r.obtained||0);ob+=Number(r.obtainable||0);return '<tr><td>'+esc(r.subject)+'</td><td>'+r.obtained+'</td><td>'+r.obtainable+'</td><td>'+r.percent+'%</td><td>'+RC.grade(r.percent)+'</td></tr>';}).join('')+'</tbody></table>'; var pct=ob?((go/ob)*100).toFixed(1):0; html+='<p style="margin-top:12px"><strong>Overall:</strong> '+go.toFixed(1)+' / '+ob.toFixed(1)+' ('+pct+'%) — Grade '+RC.grade(pct)+'</p>'; html+='<div style="margin-top:24px;display:flex;justify-content:space-between"><div>____________________<br>Class Teacher</div><div>____________________<br>Head of School</div></div>'; }
+    RC._print('Termly Report Card', html);
+  },
+  async broadsheet(){ if(!sb){toast('Database not configured','warning');return;} const cls=this.ctx.class||document.getElementById('rc-class').value, term=this.ctx.term||document.getElementById('rc-term').value, ses=this.ctx.session||document.getElementById('rc-session').value;
+    if(!cls){toast('Enter a class','warning');return;}
+    const {data}=await sb.from('report_subject_totals').select('*').eq('class',cls).eq('term',term).eq('session',ses);
+    const subs=[...new Set((data||[]).map(r=>r.subject))].sort(); const studs=[...new Set((data||[]).map(r=>r.student_name))].sort();
+    let html='<p><strong>Class:</strong> '+esc(cls)+' &nbsp; <strong>Term:</strong> '+esc(term)+'</p><table><thead><tr><th>Student</th>'+subs.map(s=>'<th>'+esc(s)+'</th>').join('')+'<th>Total</th><th>%</th></tr></thead><tbody>';
+    studs.forEach(st=>{ let tot=0,obt=0; html+='<tr><td>'+esc(st)+'</td>'+subs.map(su=>{const r=(data||[]).find(x=>x.student_name===st&&x.subject===su); if(r){tot+=Number(r.obtained||0);obt+=Number(r.obtainable||0);} return '<td>'+(r?r.obtained:'-')+'</td>';}).join('')+'<td>'+tot.toFixed(1)+'</td><td>'+(obt?((tot/obt)*100).toFixed(1):0)+'%</td></tr>'; });
+    html+='</tbody></table>'; if(!studs.length)html='<p>No scores recorded for this class/term.</p>'; RC._print('Class Broadsheet — '+esc(cls), html);
+  },
+  async scoresheet(){ if(!sb){toast('Database not configured','warning');return;} const cls=this.ctx.class||document.getElementById('rc-class').value, sub=this.ctx.subject||document.getElementById('rc-subject').value;
+    if(!cls||!sub){toast('Enter class and subject','warning');return;}
+    const ids=this.cols.map(c=>c.id); const {data:scores}=ids.length?await sb.from('report_scores').select('*').in('column_id',ids):{data:[]};
+    const map={}; (scores||[]).forEach(s=>{map[(s.student_id_ref||s.student_name)+'|'+s.column_id]=s.score;});
+    let html='<p><strong>Class:</strong> '+esc(cls)+' &nbsp; <strong>Subject:</strong> '+esc(sub)+'</p><table><thead><tr><th>Student</th>'+this.cols.map(c=>'<th>'+esc(c.name)+'<br>/'+c.max_mark+'</th>').join('')+'<th>Total</th></tr></thead><tbody>';
+    (this.students||[]).forEach(st=>{ const ref=st.admission_no||st.full_name; let tot=0; html+='<tr><td>'+esc(st.full_name)+'</td>'+this.cols.map(c=>{const v=map[ref+'|'+c.id];if(v!=null)tot+=Number(v);return '<td>'+(v!=null?v:'')+'</td>';}).join('')+'<td>'+tot.toFixed(1)+'</td></tr>'; });
+    html+='</tbody></table>'; RC._print('Teacher Scoresheet — '+esc(sub)+' ('+esc(cls)+')', html);
   }
 };
 </script>`;
@@ -1528,6 +1575,14 @@ const RC = {
         <div class="stat-card"><div class="stat-value" id="kpi-polls">—</div><div class="stat-label">Polls</div></div>
         <div class="stat-card"><div class="stat-value" id="kpi-complaints">—</div><div class="stat-label">Complaints</div></div>
         <div class="stat-card"><div class="stat-value" id="kpi-admissions">—</div><div class="stat-label">Admissions</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-assignments">—</div><div class="stat-label">Assignments</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-library">—</div><div class="stat-label">Library Books</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-events">—</div><div class="stat-label">Events</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-announcements">—</div><div class="stat-label">Announcements</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-checkins">—</div><div class="stat-label">QR Check-ins</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-leave">—</div><div class="stat-label">Leave Requests</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-visitors">—</div><div class="stat-label">Visitors</div></div>
+        <div class="stat-card"><div class="stat-value" id="kpi-tickets">—</div><div class="stat-label">Help Tickets</div></div>
       </div>
       <div class="grid grid-2">
         <div class="card"><h3>CBT Score Distribution</h3><canvas id="chart-cbt" style="max-height:260px"></canvas></div>
@@ -1649,18 +1704,25 @@ const DataTools = {
           <div class="form-group"><label>…or enter manually</label><input class="form-input" id="ic-name" placeholder="Full name" oninput="ICUI.render()"></div>
           <div class="form-group"><label>Class / Role</label><input class="form-input" id="ic-class" placeholder="JSS1" oninput="ICUI.render()"></div>
           <div class="form-group"><label>ID / Admission no</label><input class="form-input" id="ic-id" placeholder="ADM/001" oninput="ICUI.render()"></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Photo URL (auto-filled from student record; Google Drive links supported)</label><input class="form-input" id="ic-photo" placeholder="https://drive.google.com/file/d/..." oninput="ICUI.render()"></div>
         </div>
-        <button class="btn btn-primary" onclick="ICUI.print()">🖨 Print ID Card</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="ICUI.print()">🖨 Print ID Card</button>
+          <button class="btn btn-outline" onclick="ICUI.printAll()">🖨 Print ALL students</button>
+        </div>
       </div>
       <div id="ic-preview" style="display:flex;justify-content:center"></div>`;
     return T.shell(cfg, 'Digital ID Cards', body, { requireRole: 'staff' })
       .replace('</body></html>', `<script>
-const ICUI={ cur:{},
-  async load(){ const sel=document.getElementById('ic-student'); if(!sb||!sel)return; const {data}=await sb.from('students').select('id,full_name,class,admission_no,photo_url').order('full_name').limit(500); (data||[]).forEach(s=>{ const o=document.createElement('option'); o.value=JSON.stringify(s); o.textContent=s.full_name+' ('+(s.class||'')+')'; sel.appendChild(o); }); },
-  pick(v){ if(!v)return; const s=JSON.parse(v); document.getElementById('ic-name').value=s.full_name||''; document.getElementById('ic-class').value=s.class||''; document.getElementById('ic-id').value=s.admission_no||''; this.cur=s; this.render(); },
-  person(){ return { full_name:document.getElementById('ic-name').value, class:document.getElementById('ic-class').value, admission_no:document.getElementById('ic-id').value, photo_url:this.cur.photo_url, type:'student' }; },
+const ICUI={ cur:{}, all:[],
+  async load(){ const sel=document.getElementById('ic-student'); if(!sb||!sel)return; const {data}=await sb.from('students').select('id,full_name,class,admission_no,photo_url').order('full_name').limit(1000); ICUI.all=data||[]; (data||[]).forEach(s=>{ const o=document.createElement('option'); o.value=JSON.stringify(s); o.textContent=s.full_name+' ('+(s.class||'')+')'; sel.appendChild(o); }); },
+  pick(v){ if(!v)return; const s=JSON.parse(v); document.getElementById('ic-name').value=s.full_name||''; document.getElementById('ic-class').value=s.class||''; document.getElementById('ic-id').value=s.admission_no||''; document.getElementById('ic-photo').value=s.photo_url||''; this.cur=s; this.render(); },
+  person(){ return { full_name:document.getElementById('ic-name').value, class:document.getElementById('ic-class').value, admission_no:document.getElementById('ic-id').value, photo_url:document.getElementById('ic-photo').value||this.cur.photo_url, type:'student' }; },
   render(){ document.getElementById('ic-preview').innerHTML = window.Super?Super.idcard.html(this.person()):''; },
-  print(){ if(window.Super) Super.idcard.print(this.person()); }
+  print(){ if(window.Super) Super.idcard.print(this.person()); },
+  printAll(){ if(!window.Super||!ICUI.all.length){toast('No students loaded','warning');return;}
+    const cards=ICUI.all.map(s=>'<div style="margin:8px;display:inline-block">'+Super.idcard.html({full_name:s.full_name,class:s.class,admission_no:s.admission_no,photo_url:s.photo_url,type:'student'})+'</div>').join('');
+    const w=window.open('','_blank'); w.document.write('<html><head><title>ID Cards</title></head><body style="display:flex;flex-wrap:wrap;padding:10px">'+cards+'<script>window.onload=()=>window.print()<\\/script></body></html>'); w.document.close(); }
 };
 document.addEventListener('DOMContentLoaded',()=>{ ICUI.load(); ICUI.render(); }); ICUI.load(); ICUI.render();
 </script></body></html>`);
@@ -1676,29 +1738,65 @@ document.addEventListener('DOMContentLoaded',()=>{ ICUI.load(); ICUI.render(); }
         testimonial) each with a unique <strong>verification code</strong>. CBT exams also auto-issue certificate codes.</p>
       </div>
       <div class="card" style="margin-bottom:16px" data-staff-only>
+        <h3>✏️ Content</h3>
         <div class="grid grid-2">
+          <div class="form-group"><label>Recipient (pick a student or type)</label><select class="form-select" id="ct-student" onchange="CTUI.pickStudent(this.value)"><option value="">— type below —</option></select></div>
           <div class="form-group"><label>Recipient name</label><input class="form-input" id="ct-name" oninput="CTUI.render()"></div>
           <div class="form-group"><label>Certificate title</label><input class="form-input" id="ct-title" value="CERTIFICATE OF ACHIEVEMENT" oninput="CTUI.render()"></div>
           <div class="form-group"><label>Signatory</label><input class="form-input" id="ct-sig" value="Head of School" oninput="CTUI.render()"></div>
           <div class="form-group"><label>Date</label><input class="form-input" type="date" id="ct-date" oninput="CTUI.render()"></div>
         </div>
         <div class="form-group"><label>Body text</label><textarea class="form-input" id="ct-body" rows="2" oninput="CTUI.render()">has successfully met the requirements and is hereby recognised for outstanding achievement.</textarea></div>
-        <button class="btn btn-primary" onclick="CTUI.save()">💾 Save & Print</button>
+        <h3 style="margin-top:14px">🎨 Design</h3>
+        <div class="grid grid-2">
+          <div class="form-group"><label>Layout</label><select class="form-select" id="ct-layout" onchange="CTUI.render()"><option value="classic">Classic</option><option value="modern">Modern</option><option value="elegant">Elegant</option></select></div>
+          <div class="form-group"><label>Font</label><select class="form-select" id="ct-font" onchange="CTUI.render()"><option value="Georgia, serif">Georgia (serif)</option><option value="'Times New Roman', serif">Times</option><option value="Arial, sans-serif">Arial</option><option value="'Courier New', monospace">Courier</option><option value="Garamond, serif">Garamond</option></select></div>
+          <div class="form-group"><label>Primary colour</label><input class="form-input" type="color" id="ct-pc" value="${cfg.themePrimary}" oninput="CTUI.render()"></div>
+          <div class="form-group"><label>Accent colour</label><input class="form-input" type="color" id="ct-ac" value="${cfg.themeAccent}" oninput="CTUI.render()"></div>
+          <div class="form-group"><label>Border style</label><select class="form-select" id="ct-border" onchange="CTUI.render()"><option value="double">Double</option><option value="solid">Solid</option><option value="ridge">Ridge</option><option value="dashed">Dashed</option></select></div>
+          <div class="form-group"><label>Signature image (PNG)</label><input class="form-input" type="file" accept="image/*" id="ct-sigimg" onchange="CTUI.sigUpload(event)"></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" onclick="CTUI.save()">💾 Save &amp; Print</button><button class="btn btn-outline" onclick="CTUI.saveDesign()">💾 Save design template</button></div>
       </div>
       <div id="ct-preview" style="display:flex;justify-content:center;overflow:auto"></div>`;
     return T.shell(cfg, 'Certificates', body, { requireRole: 'staff' })
       .replace('</body></html>', `<script>
-const CTUI={ code:'',
-  opts(){ return { name:document.getElementById('ct-name').value, title:document.getElementById('ct-title').value, signatory:document.getElementById('ct-sig').value, date:document.getElementById('ct-date').value, body:document.getElementById('ct-body').value, code:this.code }; },
-  render(){ if(!this.code && window.Super) this.code=Super.cert.code(); document.getElementById('ct-preview').innerHTML = window.Super?Super.cert.html(this.opts()):''; },
-  async save(){
-    const o=this.opts();
+const CTUI={ code:'', sig:'',
+  v(id){ var e=document.getElementById(id); return e?e.value:''; },
+  async loadStudents(){ if(!sb)return; const sel=document.getElementById('ct-student'); const {data}=await sb.from('students').select('full_name').order('full_name').limit(1000); (data||[]).forEach(s=>{var o=document.createElement('option');o.value=s.full_name;o.textContent=s.full_name;sel.appendChild(o);}); },
+  pickStudent(v){ if(v){document.getElementById('ct-name').value=v;} this.render(); },
+  sigUpload(ev){ var f=ev.target.files[0]; if(!f)return; if(f.size>500*1024){toast('Signature should be under 500KB','warning');return;} var r=new FileReader(); r.onload=()=>{ CTUI.sig=r.result; CTUI.render(); }; r.readAsDataURL(f); },
+  opts(){ return { name:this.v('ct-name'), title:this.v('ct-title'), signatory:this.v('ct-sig'), date:this.v('ct-date'), body:this.v('ct-body'),
+    layout:this.v('ct-layout'), font:this.v('ct-font'), pc:this.v('ct-pc'), ac:this.v('ct-ac'), border:this.v('ct-border'), sig:this.sig, code:this.code }; },
+  html(o){ var sc=(window.SCHOOL||{}); var logo='assets/img/logo.'+(sc.logoExt||'svg');
+    var sigBlock = o.sig ? '<img src="'+o.sig+'" style="height:50px;display:block;margin:0 auto -6px">' : '';
+    var bg = o.layout==='modern' ? 'background:linear-gradient(135deg,'+o.pc+'10,'+o.ac+'10)' : (o.layout==='elegant'?'background:#fffef8':'background:#fff');
+    return '<div style="width:820px;max-width:96vw;border:12px '+o.border+' '+o.pc+';padding:42px;text-align:center;font-family:'+o.font+';'+bg+'">'+
+      '<img src="'+logo+'" style="width:64px;height:64px;border-radius:12px;object-fit:contain" onerror="this.style.display=\\'none\\'">'+
+      '<h1 style="margin:8px 0 2px;color:'+o.pc+'">'+esc(sc.name||"School")+'</h1>'+
+      '<p style="color:#64748b;margin:0 0 18px">'+esc(sc.motto||'')+'</p>'+
+      '<h2 style="letter-spacing:3px;color:'+o.ac+'">'+esc(o.title||"CERTIFICATE")+'</h2>'+
+      '<p style="margin:16px 0 4px">This is to certify that</p>'+
+      '<h2 style="margin:0;border-bottom:2px solid '+o.ac+';display:inline-block;padding:0 30px 6px">'+esc(o.name||"_______")+'</h2>'+
+      '<p style="max-width:560px;margin:18px auto;line-height:1.6">'+esc(o.body||'')+'</p>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:40px;font-size:.85rem">'+
+        '<div>____________________<br>Date: '+esc(o.date||new Date().toLocaleDateString())+'</div>'+
+        '<div>'+sigBlock+'____________________<br>'+esc(o.signatory||"Head of School")+'</div></div>'+
+      '<p style="margin-top:22px;font-size:.72rem;color:#94a3b8">Verification code: <strong>'+esc(o.code)+'</strong></p></div>';
+  },
+  render(){ if(!this.code) this.code=(window.Super?Super.cert.code():'SC-'+Math.random().toString(36).slice(2,8).toUpperCase()); document.getElementById('ct-preview').innerHTML=this.html(this.opts()); },
+  print(){ var w=window.open('','_blank'); w.document.write('<html><head><title>Certificate</title></head><body style="display:flex;justify-content:center;padding:16px">'+this.html(this.opts())+'<script>window.onload=()=>window.print()<\\/script></body></html>'); w.document.close(); },
+  async save(){ const o=this.opts();
     if(sb){ try{ await sb.from('certificates').insert({ student_id:null, type:o.title, serial_no:o.code, signed_by:o.signatory }); }catch(e){} }
     if(window.App && App.logActivity) App.logActivity('issue','certificate',o.code);
-    if(window.Super) Super.cert.print(o);
+    this.print();
+  },
+  async saveDesign(){ if(!sb){toast('DB not configured','warning');return;} const o=this.opts();
+    const {error}=await sb.from('certificate_designs').insert({ name:o.title+' design', title:o.title, primary_color:o.pc, accent_color:o.ac, font:o.font, layout:o.layout, body_text:o.body, signatory:o.signatory, signature_data:o.sig, border_style:o.border });
+    if(error){toast(error.message,'danger');return;} toast('Design template saved ✓','success');
   }
 };
-document.addEventListener('DOMContentLoaded',()=>CTUI.render()); CTUI.render();
+document.addEventListener('DOMContentLoaded',()=>{ CTUI.loadStudents(); CTUI.render(); }); CTUI.render();
 </script></body></html>`);
   },
 
@@ -1746,7 +1844,7 @@ if(window.Super){ const p=document.getElementById('fl-preview'); if(p) p.innerHT
     const nav = [{ id: 'dashboard', name: 'Dashboard', icon: '🏠', html: T.dashboard(cfg) }];
     const dedicated = {
       cbt: () => Generator.pageCBT(cfg), 'report-cards': () => Generator.pageReportCards(cfg),
-      analytics: () => Generator.pageAnalytics(cfg), 'admin-data': () => Generator.pageAdminData(cfg), approvals: () => Generator.pageApprovals(cfg),
+      analytics: () => Generator.pageAnalytics(cfg), 'admin-data': () => Generator.pageAdminData(cfg), approvals: () => Generator.pageApprovals(cfg), admissions: () => Generator.pageAdmissions(cfg),
       idcards: () => Generator.pageIdCards(cfg), certificates: () => Generator.pageCertificates(cfg),
       flyer: () => Generator.pageFlyer(cfg)
     };
@@ -1919,10 +2017,26 @@ pvGo('dashboard');
   pageTimetableGen(cfg) {
     const body = `
       <div class="card" style="margin-bottom:16px"><p style="color:var(--gray-600);margin:0">
-        Add each subject's weekly period demand, then click <strong>Generate</strong>. The system builds a
-        <strong>conflict-free</strong> timetable (no class or teacher double-booked) using a deterministic
-        scheduler — <strong>no AI, no cost</strong>.</p></div>
+        <strong>Step 1:</strong> set the daily periods, their times and breaks. <strong>Step 2:</strong> add each
+        subject's weekly demand. <strong>Step 3:</strong> generate a <strong>conflict-free</strong> timetable
+        (deterministic, no AI) — part-time teachers are only scheduled on the days they attend.</p></div>
       <div class="card" style="margin-bottom:16px" data-staff-only>
+        <h3>🕐 Step 1 · Period & break configuration</h3>
+        <div class="grid grid-2" style="margin:8px 0">
+          <div class="form-group"><label>Number of teaching periods per day</label><input class="form-input" type="number" id="pc-count" value="6" min="1" max="12"></div>
+          <div class="form-group"><label>Default period length (minutes)</label><input class="form-input" type="number" id="pc-len" value="40"></div>
+          <div class="form-group"><label>Day starts at</label><input class="form-input" type="time" id="pc-start" value="08:00"></div>
+          <div class="form-group"><label>Short break after period</label><input class="form-input" type="number" id="pc-sb" value="2" placeholder="e.g. 2"></div>
+          <div class="form-group"><label>Short break length (min)</label><input class="form-input" type="number" id="pc-sbl" value="15"></div>
+          <div class="form-group"><label>Long break after period</label><input class="form-input" type="number" id="pc-lb" value="4" placeholder="e.g. 4"></div>
+          <div class="form-group"><label>Long break length (min)</label><input class="form-input" type="number" id="pc-lbl" value="30"></div>
+        </div>
+        <button class="btn btn-primary" onclick="PC.build()">🕐 Build period schedule</button>
+        <button class="btn btn-outline" onclick="PC.save()">💾 Save schedule</button>
+        <div id="pc-preview" style="margin-top:12px"></div>
+      </div>
+      <div class="card" style="margin-bottom:16px" data-staff-only>
+        <h3>📚 Step 2 · Subject demand &amp; generation</h3>
         <div class="grid grid-2">
           <div class="form-group"><label>Class</label><input class="form-input" id="tt-class" placeholder="JSS1"></div>
           <div class="form-group"><label>Periods per day</label><input class="form-input" type="number" id="tt-ppd" value="6"></div>
@@ -1948,6 +2062,29 @@ pvGo('dashboard');
       <div id="tt-grid"></div>`;
     return T.shell(cfg, 'Timetable Generator', body, { requireRole: 'staff' })
       .replace('</body></html>', `<script>
+function _addMin(t,m){var p=(t||'08:00').split(':'),d=new Date(2000,0,1,+p[0],+p[1]);d.setMinutes(d.getMinutes()+m);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+const PC={ rows:[],
+  build(){
+    var count=+document.getElementById('pc-count').value||6, len=+document.getElementById('pc-len').value||40;
+    var start=document.getElementById('pc-start').value||'08:00';
+    var sb_=+document.getElementById('pc-sb').value||0, sbl=+document.getElementById('pc-sbl').value||0;
+    var lb=+document.getElementById('pc-lb').value||0, lbl=+document.getElementById('pc-lbl').value||0;
+    PC.rows=[]; var t=start, pno=0;
+    for(var i=1;i<=count;i++){ pno++; var e=_addMin(t,len); PC.rows.push({period_no:pno,label:'Period '+i,start_time:t,end_time:e,is_break:false}); t=e;
+      if(i===sb_&&sbl){ var be=_addMin(t,sbl); PC.rows.push({period_no:pno+0.1,label:'Short Break',start_time:t,end_time:be,is_break:true}); t=be; }
+      if(i===lb&&lbl){ var le=_addMin(t,lbl); PC.rows.push({period_no:pno+0.2,label:'Long Break',start_time:t,end_time:le,is_break:true}); t=le; }
+    }
+    document.getElementById('pc-preview').innerHTML='<div class="table-wrap"><table><thead><tr><th>#</th><th>Label</th><th>Start</th><th>End</th></tr></thead><tbody>'+
+      PC.rows.map(r=>'<tr style="'+(r.is_break?'background:var(--gray-100);font-style:italic':'')+'"><td>'+(r.is_break?'—':r.period_no)+'</td><td>'+esc(r.label)+'</td><td>'+esc(r.start_time)+'</td><td>'+esc(r.end_time)+'</td></tr>').join('')+'</tbody></table></div>';
+    var ppd=PC.rows.filter(r=>!r.is_break).length; var el=document.getElementById('tt-ppd'); if(el)el.value=ppd;
+  },
+  async save(){ if(!PC.rows.length){PC.build();} if(!sb){toast('Configured (DB not connected to persist)','info');return;}
+    try{ await sb.from('timetable_config').delete().eq('class','ALL'); var pos=0;
+      for(const r of PC.rows){ pos++; await sb.from('timetable_config').insert({class:'ALL',period_no:Math.floor(r.period_no),label:r.label,start_time:r.start_time,end_time:r.end_time,is_break:r.is_break,position:pos}); }
+      toast('Period schedule saved ✓','success'); if(window.App&&App.logActivity)App.logActivity('config','timetable_config','ALL');
+    }catch(e){ toast(e.message,'danger'); } }
+};
+document.addEventListener('DOMContentLoaded',()=>{ try{PC.build();}catch(e){} });
 const TTG={
   async add(){ const c=document.getElementById('tt-class').value.trim(); if(!c){toast('Enter a class','warning');return;}
     var pt=document.getElementById('tt-pt').checked;
@@ -2165,6 +2302,103 @@ document.addEventListener('DOMContentLoaded',ST.init); ST.init();
      from the dashboard. Updates profiles.status (pending→approved/suspended)
      and can set roles. Also surfaces pending admissions applications.
      ==================================================================== */
+  /* ====================================================================
+     ADMISSIONS & ENROLLMENT (issue 13) — generate a public application link,
+     review submitted applications, and EXTRACT accepted ones into students.
+     ==================================================================== */
+  pageAdmissions(cfg) {
+    const body = `
+      <div class="card" style="margin-bottom:16px"><p style="color:var(--gray-600);margin:0">
+        Generate a public <strong>application link</strong> to send to prospective parents. They fill it (no account),
+        you review, then <strong>Accept &amp; Extract</strong> to auto-create the student record.</p></div>
+      <div class="card" style="margin-bottom:16px" data-staff-only>
+        <h3>🔗 Application links</h3>
+        <div class="grid grid-2">
+          <div class="form-group"><label>Label</label><input class="form-input" id="al-label" placeholder="2026 Intake"></div>
+          <div class="form-group"><label>Applying for class</label><input class="form-input" id="al-class" placeholder="JSS1"></div>
+          <div class="form-group"><label>Session</label><input class="form-input" id="al-session" placeholder="2025/2026"></div>
+        </div>
+        <button class="btn btn-primary" onclick="ADM.makeLink()">+ Generate link</button>
+        <div id="al-list" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h3>📨 Submitted applications</h3>
+        <div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn btn-outline" onclick="ADM.load()">↻ Refresh</button></div>
+        <div id="adm-list"><span class="pulse">Loading…</span></div>
+      </div>`;
+    return T.shell(cfg, 'Admissions', body, { requireRole: 'staff' })
+      .replace('</body></html>', `<script>
+const ADM={
+  async makeLink(){ if(!sb){toast('DB not configured','warning');return;}
+    const {data,error}=await sb.from('admission_links').insert({label:document.getElementById('al-label').value,applying_for_class:document.getElementById('al-class').value,session:document.getElementById('al-session').value}).select().single();
+    if(error){toast(error.message,'danger');return;} toast('Link generated ✓','success'); ADM.links();
+  },
+  async links(){ if(!sb)return; const {data}=await sb.from('admission_links').select('*').order('created_at',{ascending:false});
+    const base=location.origin+location.pathname.replace(/admissions\\.html$/,'apply.html');
+    document.getElementById('al-list').innerHTML='<div class="table-wrap"><table><thead><tr><th>Label</th><th>Class</th><th>Link</th><th>Active</th></tr></thead><tbody>'+(data||[]).map(l=>{const url=base+'?token='+l.token;return '<tr><td>'+esc(l.label||'-')+'</td><td>'+esc(l.applying_for_class||'-')+'</td><td><input class="form-input" style="font-size:.78rem" value="'+esc(url)+'" onclick="this.select()"> <button class="btn btn-sm btn-outline" onclick="navigator.clipboard.writeText(\\''+url+'\\');toast(\\'Copied\\',\\'success\\')">Copy</button></td><td>'+(l.active?'✓':'—')+'</td></tr>';}).join('')+'</tbody></table></div>';
+  },
+  async load(){ if(!sb){document.getElementById('adm-list').innerHTML='<p>DB not configured.</p>';return;}
+    const {data}=await sb.from('admissions').select('*').order('created_at',{ascending:false}).limit(500);
+    if(!data||!data.length){document.getElementById('adm-list').innerHTML='<p style="color:var(--gray-500)">No applications yet.</p>';return;}
+    document.getElementById('adm-list').innerHTML='<div class="table-wrap"><table><thead><tr><th>Applicant</th><th>Class</th><th>Parent</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+
+      data.map(a=>'<tr><td>'+esc(a.full_name||'')+'</td><td>'+esc(a.applying_for_class||'')+'</td><td>'+esc(a.parent_name||'')+'<br><small>'+esc(a.parent_phone||'')+'</small></td><td><span class="badge">'+esc(a.status)+'</span>'+(a.extracted?' <span class="badge badge-success">enrolled</span>':'')+'</td>'+
+        '<td style="white-space:nowrap" data-admin-only>'+(a.extracted?'':'<button class="btn btn-sm btn-primary" onclick="ADM.extract(\\''+a.id+'\\')">Accept &amp; Extract</button> ')+'<button class="btn btn-sm btn-outline" onclick="ADM.set(\\''+a.id+'\\',\\'rejected\\')">Reject</button></td></tr>').join('')+'</tbody></table></div>';
+    if(window.App&&App.applyRoleVisibility)try{App.applyRoleVisibility();}catch(e){}
+  },
+  async extract(id){ const {data,error}=await sb.rpc('extract_admission',{p_id:id}); if(error||(data&&!data.ok)){toast((error&&error.message)||(data&&data.error)||'Error','danger');return;} if(window.App&&App.logActivity)App.logActivity('extract','admission',id); toast('✅ Student created from application','success'); ADM.load(); },
+  async set(id,s){ await sb.from('admissions').update({status:s}).eq('id',id); ADM.load(); }
+};
+document.addEventListener('DOMContentLoaded',()=>{ ADM.links(); ADM.load(); }); ADM.links(); ADM.load();
+</script></body></html>`);
+  },
+
+  /* Public, no-auth admission application form (issue 13) */
+  pageApply(cfg) {
+    return T.head(cfg, 'Apply for Admission') + T.bellAndBanner(cfg) + T.modal() + `
+<div class="login-shell" style="min-height:100vh;background:var(--gray-100);padding:24px">
+  <div style="max-width:640px;margin:0 auto">
+    <div class="card" style="text-align:center;margin-bottom:16px">
+      <img src="assets/img/logo.${cfg.logoExt}" alt="" style="width:54px;height:54px;border-radius:12px;object-fit:contain" onerror="this.style.display='none'">
+      <h1 style="margin:8px 0 0;font-size:1.4rem">${T.esc(cfg.schoolName)} — Admission Application</h1>
+    </div>
+    <div id="apply-root" class="card"><span class="pulse">Loading…</span></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script>
+(function(){
+  function $(id){return document.getElementById(id);}
+  var token=new URLSearchParams(location.search).get('token')||'';
+  var root=$('apply-root');
+  if(!token){ root.innerHTML='<p>Invalid application link. Please request a valid link from the school.</p>'; return; }
+  if(!sb){ root.innerHTML='<p>Application form is temporarily unavailable.</p>'; return; }
+  root.innerHTML='<h3>Applicant details</h3>'+
+   '<div class="form-group"><label>Full name *</label><input class="form-input" id="ap-name" required></div>'+
+   '<div class="form-group"><label>Date of birth</label><input class="form-input" type="date" id="ap-dob"></div>'+
+   '<div class="form-group"><label>Gender</label><select class="form-select" id="ap-gender"><option value="">—</option><option>male</option><option>female</option></select></div>'+
+   '<div class="form-group"><label>Applying for class</label><input class="form-input" id="ap-class"></div>'+
+   '<h3 style="margin-top:12px">Parent / Guardian</h3>'+
+   '<div class="form-group"><label>Parent name *</label><input class="form-input" id="ap-pname" required></div>'+
+   '<div class="form-group"><label>Parent email</label><input class="form-input" type="email" id="ap-pemail"></div>'+
+   '<div class="form-group"><label>Parent phone</label><input class="form-input" id="ap-pphone"></div>'+
+   '<div class="form-group"><label>Student photo URL (Google Drive link optional)</label><input class="form-input" id="ap-photo"></div>'+
+   '<button class="btn btn-primary" id="ap-submit">Submit application</button>';
+  $('ap-submit').onclick=async function(){
+    if(!$('ap-name').value.trim()||!$('ap-pname').value.trim()){ alert('Applicant and parent name are required.'); return; }
+    this.disabled=true; this.textContent='Submitting…';
+    var payload={ token:token, full_name:$('ap-name').value, dob:$('ap-dob').value, gender:$('ap-gender').value,
+      applying_for_class:$('ap-class').value, parent_name:$('ap-pname').value, parent_email:$('ap-pemail').value,
+      parent_phone:$('ap-pphone').value, photo_url:$('ap-photo').value };
+    var res; try{ res=await sb.rpc('submit_admission',{p_payload:payload}); }catch(e){ res={error:e}; }
+    if(res.error||(res.data&&!res.data.ok)){ alert((res.error&&res.error.message)||(res.data&&res.data.error)||'Could not submit'); this.disabled=false; this.textContent='Submit application'; return; }
+    root.innerHTML='<div style="text-align:center;padding:20px"><h2>✅ Application received</h2><p>Thank you. The school will review your application and contact you.</p></div>';
+  };
+})();
+</script>
+</body></html>`;
+  },
+
   pageApprovals(cfg) {
     const body = `
       <div class="card" style="margin-bottom:16px"><p style="color:var(--gray-600);margin:0">

@@ -38,20 +38,21 @@ const Analytics = {
 
   /* Load the full KPI set. Each is resilient to a missing/empty table. */
   async loadKpis() {
+    const today = new Date().toISOString().slice(0, 10);
     const [students, staff, exams, results, polls, complaints, admissions,
-           feesPaid, donations, attendanceToday] = await Promise.all([
-      this.count('students'),
-      this.count('staff'),
-      this.count('cbt_exams'),
-      this.count('cbt_results'),
-      this.count('polls'),
-      this.count('complaints'),
-      this.count('admissions'),
-      this.sum('fee_payments', 'amount_paid'),
-      this.sum('donations', 'amount'),
-      this.count('attendance', [['date', new Date().toISOString().slice(0, 10)]])
+           feesPaid, donations, attendanceToday, assignments, library, events,
+           announcements, books, checkins, leave, visitors, lessonPlans, tickets] = await Promise.all([
+      this.count('students'), this.count('staff'), this.count('cbt_exams'), this.count('cbt_results'),
+      this.count('polls'), this.count('complaints'), this.count('admissions'),
+      this.sum('fee_payments', 'amount_paid'), this.sum('donations', 'amount'),
+      this.count('attendance', [['date', today]]),
+      this.count('assignments'), this.count('library'), this.count('events'),
+      this.count('announcements'), this.count('library'),
+      this.count('attendance_checkins', [['checkin_at', today]]).catch ? this.count('attendance_checkins') : this.count('attendance_checkins'),
+      this.count('leave_requests'), this.count('visitors'), this.count('lesson_plans'), this.count('helpdesk_tickets')
     ]);
-    return { students, staff, exams, results, polls, complaints, admissions, feesPaid, donations, attendanceToday };
+    return { students, staff, exams, results, polls, complaints, admissions, feesPaid, donations,
+             attendanceToday, assignments, library, events, announcements, checkins, leave, visitors, lessonPlans, tickets };
   },
 
   /* CBT performance distribution for charts */
@@ -122,6 +123,9 @@ const Analytics = {
     set('kpi-attendance', k.attendanceToday);
     set('kpi-fees', cur + Number(k.feesPaid).toLocaleString());
     set('kpi-donations', cur + Number(k.donations).toLocaleString());
+    set('kpi-assignments', k.assignments); set('kpi-library', k.library); set('kpi-events', k.events);
+    set('kpi-announcements', k.announcements); set('kpi-checkins', k.checkins); set('kpi-leave', k.leave);
+    set('kpi-visitors', k.visitors); set('kpi-tickets', k.tickets);
     const dist = await this.cbtDistribution();
     this.drawBar('chart-cbt', dist.labels, dist.data, 'CBT score %', '#7c3aed');
     const trend = await this.enrollmentTrend();

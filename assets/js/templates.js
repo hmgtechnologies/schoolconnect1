@@ -211,6 +211,7 @@ ${T.modal()}
       <h1 class="app-page-title">${T.esc(page)}</h1>
       <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
         ${config.campuses && config.campuses.length > 1 ? T.campusSwitcher(config) : ''}
+        <button class="btn btn-sm btn-outline" onclick="if(window.Super)Super.chatbot.explainPage()" title="About this page">ℹ️ Help</button>
         <button class="btn btn-sm btn-outline" onclick="App.toggleDarkMode()" title="Toggle theme">🌙</button>
         <button class="btn btn-sm btn-outline" onclick="App.signOut()" data-signout style="display:none">Sign out</button>
       </div>
@@ -255,7 +256,7 @@ ${T.modal()}
   renderNav(config, items, current) {
     return `<aside class="app-sidebar" id="app-sidebar">
       <div class="app-brand">
-        <img src="assets/img/logo.${config.logoExt || 'svg'}" alt="${T.esc(config.schoolName)} logo" style="object-fit:contain">
+        <img src="assets/img/logo.${config.logoExt || 'svg'}" alt="${T.esc(config.schoolName)}" style="object-fit:contain" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{textContent:('${T.esc((config.shortName||config.schoolName||'S')[0])}'),style:'width:40px;height:40px;border-radius:10px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900'}))">
         <div>
           <strong>${T.esc(config.schoolName)}</strong>
           <div style="font-size:0.7rem;color:var(--gray-500)">${T.esc(config.shortName || '')}</div>
@@ -375,6 +376,8 @@ ${T.modal()}
         <button class="btn btn-primary" onclick="CRUD.openForm('${T.esc(moduleId)}')" data-staff-only>+ Add new</button>
         <button class="btn btn-outline" onclick="CRUD.renderList('${T.esc(moduleId)}')">↻ Refresh</button>
         <button class="btn btn-outline" onclick="CRUD.exportCSV('${T.esc(moduleId)}')" data-staff-only>⬇ Export CSV</button>
+        ${moduleId === 'birthdays' ? '<button class="btn btn-outline" onclick="CRUD.importBirthdays()" data-staff-only>🎂 Import student birthdays</button>' : ''}
+        ${moduleId === 'sow' ? '<span style="align-self:center;color:var(--gray-500);font-size:.85rem">Tip: tick “Taught this week (confirm)” as you cover each topic so admin can track coverage.</span>' : ''}
       </div>
       <div class="table-wrap"><table id="${T.esc(moduleId)}-table"><thead><tr><th>Loading…</th></tr></thead><tbody><tr><td><span class="pulse">Loading…</span></td></tr></tbody></table></div>
       <script>document.addEventListener('DOMContentLoaded',function(){ if(window.CRUD) CRUD.renderList('${T.esc(moduleId)}'); });</script>`,
