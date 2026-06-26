@@ -5,6 +5,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Connect Repair v3] — 2026-06-25 — "16 fixes: dropdowns, auto-IDs, reports, admissions, designer" (cumulative)
+
+Resolves 16 client-reported issues + enhancements. **Nothing removed.** Free tools, no AI.
+
+- **Relational dropdowns + time pickers** everywhere (pick students/classes/subjects/terms; no retyping).
+- **Auto-generated** admission numbers (students) and member IDs (parents/staff on approval).
+- **Assistant**: per-page explanations (ℹ️ Help button), expanded KB, page/process/FAQ help.
+- **results.html** and all previously-missing pages now generate.
+- **Scheme of Work** weekly "taught" confirmation for coverage monitoring.
+- **Report Card / Class Broadsheet / Teacher Scoresheet** generation.
+- **Timetable** period/break/timing configuration before generation.
+- Every module now has a real **Add/Edit/Delete** form (flexible `module_records` store) — no more "no editable form".
+- **Announcement audience** is a dropdown; **birthdays** auto-import from students.
+- **ID cards** show the student photo (Google-Drive links supported) + Print-All.
+- **Certificate designer**: colours, fonts, layouts, signature upload, save templates.
+- **Admissions**: generate a public application link → `apply.html` → admin Accept & Extract into students.
+- **Analytics** expanded to 18+ KPIs; **anonymous CBT** guest mode; **logo** accepts any format + onerror fallback.
+- New 6th SQL file `database/enhancements-schema.sql` (settings, lookups, triggers, designs, admission links, module_records, RPCs).
+
+### ✅ Verified
+- 15 builder JS valid; 79 generated pages valid; 6 SQL files clean + idempotent on PostgreSQL 17;
+  admission flow + auto-ID triggers tested live; `verify.sh` 126/126.
+
+---
+
 ## [Connect Repair v1] — 2026-06-25 — "Real CRUD, Camera Check-in, Approvals, Full-stack" (cumulative)
 
 Fixes 6 client-reported issues + major enhancements. **Nothing removed.** Free tools, no AI.
